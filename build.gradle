@@ -1,0 +1,30 @@
+plugins {
+    id 'groovy'
+}
+
+group 'io.izzel.arclight'
+version '1.0'
+
+repositories {
+    mavenCentral()
+    maven {
+        name = 'Forge Maven'
+        url = 'https://files.minecraftforge.net/maven'
+    }
+}
+
+configurations {
+    embed
+    compile.extendsFrom(embed)
+}
+
+dependencies {
+    compile gradleApi()
+    compile localGroovy()
+    compile group: 'net.minecraftforge.gradle', name: 'ForgeGradle', version: '3.+', changing: true
+    embed group: 'net.md-5', name: 'SpecialSource', version: '1.8.6'
+}
+
+jar {
+    from(configurations.embed.collect { it.isDirectory() ? it : zipTree(it) })
+}
