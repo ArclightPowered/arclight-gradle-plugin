@@ -7,12 +7,6 @@ Gradle plugin designed for Arclight development.
 ## Usage
 
 ```groovy
-repositories {
-    maven { url = 'https://jitpack.io' }
-}
-dependencies {
-    classpath 'com.github.IzzelAliz:arclight-gradle-plugin:1.0'
-}
 buildscript {
     repositories {
         maven { url = 'https://jitpack.io' }
