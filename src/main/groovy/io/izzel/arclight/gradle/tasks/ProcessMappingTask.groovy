@@ -1,12 +1,13 @@
 package io.izzel.arclight.gradle.tasks
 
-import groovy.transform.CompileStatic
 import io.izzel.arclight.gradle.Utils
 import net.md_5.specialsource.InheritanceMap
 import net.md_5.specialsource.Jar
 import net.md_5.specialsource.JarMapping
+import net.md_5.specialsource.provider.ClassLoaderProvider
 import net.md_5.specialsource.provider.InheritanceProvider
 import net.md_5.specialsource.provider.JarProvider
+import net.md_5.specialsource.provider.JointProvider
 import net.md_5.specialsource.transformer.MappingTransformer
 import org.gradle.api.DefaultTask
 import org.gradle.api.tasks.Input
@@ -20,8 +21,6 @@ import org.objectweb.asm.commons.Remapper
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.StandardOpenOption
-import java.util.concurrent.LinkedBlockingQueue
-import java.util.stream.Stream
 
 class ProcessMappingTask extends DefaultTask {
 
@@ -77,12 +76,14 @@ class ProcessMappingTask extends DefaultTask {
         def srgRev = srg.classes.collectEntries { [(it.value): it.key] }
         def csrgRev = csrg.classes.collectEntries { [(it.value): it.key] }
         def im = new InheritanceMap()
-        def prov = new JarProvider(Jar.init(inJar))
+        def prov = new JointProvider()
+        prov.add(new JarProvider(Jar.init(inJar)))
+        prov.add(new ClassLoaderProvider(ClassLoader.getSystemClassLoader()))
         def mappingProv = new InheritanceProvider() {
             @Override
             Collection<String> getParents(String className) {
                 def bukkit = csrg.classes.get(srgRev.get(className))
-                if (!bukkit) return null
+                if (!bukkit) return prov.getParents(className)
                 return prov.getParents(bukkit).collect { srg.classes.get(csrgRev.get(it)) }
             }
         }
@@ -117,6 +118,12 @@ class ProcessMappingTask extends DefaultTask {
             @Override
             String map(String internalName) {
                 return csrg.classes.get(internalName)
+            }
+        }
+        def notchToSrgMapper = new Remapper() {
+            @Override
+            String map(String internalName) {
+                return srg.classes.get(internalName)
             }
         }
         Utils.using(new PrintWriter(Files.newBufferedWriter(outDir.toPath().resolve('bukkit_at.at'), StandardOpenOption.CREATE))) { writer ->
@@ -187,17 +194,17 @@ class ProcessMappingTask extends DefaultTask {
                 if (csrg.classes.containsKey(owner)) {
                     def csrgCl = notchToCsrgMapper.map(owner)
                     def csrgDesc = notchToCsrgMapper.mapMethodDesc(desc)
-                    def csrgMethod = ProcessMappingTask.findCsrg(im, csrgCl, notch, csrgDesc, csrg.methods)
-                    writer.println("MD: $csrgCl/$csrgMethod $csrgDesc ${srg.classes.get(owner)}/$srgMethod ${csrgToSrgMapper.mapMethodDesc(csrgDesc)}")
+                    def csrgMethod = ProcessMappingTask.findCsrg(prov, csrgCl, notch, csrgDesc, csrg.methods)
+                    writer.println("MD: $csrgCl/$csrgMethod $csrgDesc ${srg.classes.get(owner)}/$srgMethod ${notchToSrgMapper.mapMethodDesc(desc)}")
                 }
             }
         }
     }
 
-    private static String findCsrg(InheritanceMap im, String owner, String notch, String desc, Map<String, String> map) {
-        def params = desc.substring(desc.lastIndexOf(')') + 1)
-        for (def ret : allOf(im, Type.getReturnType(desc).getInternalName())) {
-            for (def cl : allOf(im, owner)) {
+    private static String findCsrg(InheritanceProvider prov, String owner, String notch, String desc, Map<String, String> map) {
+        def params = desc.substring(0, desc.lastIndexOf(')') + 1)
+        for (def ret : allRet(prov, Type.getReturnType(desc).descriptor)) {
+            for (def cl : allOf(prov, owner)) {
                 def csrg = map.get("$cl/$notch $params$ret".toString())
                 if (csrg) return csrg
             }
@@ -205,13 +212,23 @@ class ProcessMappingTask extends DefaultTask {
         return notch
     }
 
-    private static List<String> allOf(InheritanceMap im, String owner) {
+    private static List<String> allRet(InheritanceProvider prov, String desc) {
+        def type = Type.getType(desc)
+        if (type.sort == Type.ARRAY) {
+            return allRet(prov, type.elementType.descriptor).collect { ('[' * type.dimensions) + it }
+        } else if (type.sort == Type.OBJECT) {
+            return allOf(prov, type.internalName).collect { 'L' + it + ';' }
+        } else return [type.descriptor]
+    }
+
+    private static List<String> allOf(InheritanceProvider prov, String owner) {
         def ret = new ArrayList<String>()
         def queue = new ArrayDeque<String>()
         queue.addFirst(owner)
         while (!queue.isEmpty()) {
             def cl = queue.pollFirst()
-            im.getParents(cl).each { queue.addLast(it) }
+            def parents = prov.getParents(cl)
+            if (parents) parents.each { queue.addLast(it) }
             ret.add(cl)
         }
         return ret

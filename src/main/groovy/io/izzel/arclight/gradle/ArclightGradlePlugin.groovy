@@ -81,6 +81,7 @@ class ArclightGradlePlugin implements Plugin<Project> {
                     }
                 }
             }
+            project.tasks.compileJava.dependsOn(remapSpigot)
             generateMeta.configure { Copy task ->
                 task.into(metaFolder) {
                     task.from(project.zipTree(project.file("${project.buildDir}/arclight_cache/spigot-${arclightExt.mcVersion}-mapped.jar")))
@@ -90,7 +91,6 @@ class ArclightGradlePlugin implements Plugin<Project> {
                 task.outputs.file(new File(metaFolder as File, 'META-INF/installer.json'))
                 task.doLast {
                     def installer = new File(metaFolder, 'META-INF/installer.json')
-                    def lib = new HashSet<String>()
                     def libs = project.configurations.arclight.dependencies.collect {
                         def classifier = null
                         if (it.artifacts) {
@@ -106,7 +106,6 @@ class ArclightGradlePlugin implements Plugin<Project> {
                             return "${it.group}:${it.name}:${it.version}"
                         }
                     }
-                    lib.each { println(it) }
                     def output = [installer: [minecraft: arclightExt.mcVersion, forge: arclightExt.forgeVersion], libraries: libs]
                     installer.text = JsonOutput.toJson(output)
                 }
