@@ -4,6 +4,7 @@ import io.izzel.arclight.gradle.Utils
 import org.gradle.api.DefaultTask
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
 
@@ -24,6 +25,7 @@ class RemapSpigotTask extends DefaultTask {
     private File outDeobf
     private List<String> includes
     private List<String> excludes
+    private String bukkitVersion
 
     RemapSpigotTask() {
         includes = new ArrayList<>()
@@ -54,20 +56,29 @@ class RemapSpigotTask extends DefaultTask {
             standardOutput = System.out
         }
         def tmpDeobf = Files.createTempFile("arclight", "jar")
+        def args = [
+                'java', '-jar', ssJar.canonicalPath,
+                '-i', tmp.toFile().canonicalPath,
+                '-o', tmpDeobf.toFile().canonicalPath,
+                '-m', inSrgToStable.canonicalPath,
+                '-h', inheritanceMap.canonicalPath
+        ]
+        Path tmpSrg
+        if (bukkitVersion) {
+            tmpSrg = Files.createTempFile("arclight", "srg")
+            tmpSrg.text = "PK: org/bukkit/craftbukkit/$bukkitVersion org/bukkit/craftbukkit/v"
+            args.add('-m')
+            args.add(tmpSrg.toFile().canonicalPath)
+        }
         project.exec {
-            commandLine = [
-                    'java', '-jar', ssJar.canonicalPath,
-                    '-i', tmp.toFile().canonicalPath,
-                    '-o', tmpDeobf.toFile().canonicalPath,
-                    '-m', inSrgToStable.canonicalPath,
-                    '-h', inheritanceMap.canonicalPath
-            ]
+            commandLine = args
             standardOutput = System.out
         }
         copy(tmp, outJar.toPath(), includes, excludes)
         copy(tmpDeobf, outDeobf.toPath(), includes, excludes)
         Files.delete(tmp)
         Files.delete(tmpDeobf)
+        if (tmpSrg) Files.delete(tmpSrg)
     }
 
     private static void copy(Path inJar, Path outJar, List<String> includes, List<String> excludes) {
@@ -166,5 +177,15 @@ class RemapSpigotTask extends DefaultTask {
 
     void setOutDeobf(File outDeobf) {
         this.outDeobf = outDeobf
+    }
+
+    @Input
+    @Optional
+    String getBukkitVersion() {
+        return bukkitVersion
+    }
+
+    void setBukkitVersion(String bukkitVersion) {
+        this.bukkitVersion = bukkitVersion
     }
 }

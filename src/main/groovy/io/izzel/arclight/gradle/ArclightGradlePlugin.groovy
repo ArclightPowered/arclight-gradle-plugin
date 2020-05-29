@@ -7,12 +7,19 @@ import io.izzel.arclight.gradle.tasks.DownloadBuildToolsTask
 import io.izzel.arclight.gradle.tasks.RemapSpigotTask
 import net.minecraftforge.gradle.common.task.ExtractMCPData
 import net.minecraftforge.gradle.mcp.task.GenerateSRG
+import net.minecraftforge.gradle.userdev.tasks.RenameJarInPlace
 import org.gradle.api.InvalidUserDataException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.artifacts.DependencyArtifact
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.StopExecutionException
+
+import java.nio.file.FileVisitResult
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.SimpleFileVisitor
+import java.nio.file.attribute.BasicFileAttributes
 
 class ArclightGradlePlugin implements Plugin<Project> {
 
@@ -75,16 +82,28 @@ class ArclightGradlePlugin implements Plugin<Project> {
                 task.outJar = project.file("${project.buildDir}/arclight_cache/spigot-${arclightExt.mcVersion}-mapped.jar")
                 task.outDeobf = project.file("${project.buildDir}/arclight_cache/spigot-${arclightExt.mcVersion}-mapped-deobf.jar")
                 task.dependsOn(processMapping)
-                task.doFirst {
-                    if (task.outJar.exists() && task.outDeobf.exists()) {
-                        throw new StopExecutionException()
-                    }
+                if (arclightExt.wipeVersion && !task.bukkitVersion) {
+                    task.bukkitVersion = arclightExt.bukkitVersion
                 }
             }
             project.tasks.compileJava.dependsOn(remapSpigot)
             generateMeta.configure { Copy task ->
+                task.doFirst {
+                    Files.walkFileTree(metaFolder.toPath(), new SimpleFileVisitor<Path>() {
+                        @Override
+                        FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                            Files.delete(file)
+                            return FileVisitResult.CONTINUE
+                        }
+                        @Override
+                        FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                            Files.delete(dir)
+                            return FileVisitResult.CONTINUE
+                        }
+                    })
+                }
                 task.into(metaFolder) {
-                    task.from(project.zipTree(project.file("${project.buildDir}/arclight_cache/spigot-${arclightExt.mcVersion}-mapped.jar")))
+                    task.from(project.zipTree(project.file("${project.buildDir}/arclight_cache/spigot-${arclightExt.mcVersion}-mapped-deobf.jar")))
                     task.from(new File(project.file("${project.buildDir}/arclight_cache/tmp_srg"), 'inheritanceMap.txt'))
                     task.from(new File(project.file("${project.buildDir}/arclight_cache/tmp_srg"), 'bukkit_srg.srg'))
                 }
@@ -112,6 +131,16 @@ class ArclightGradlePlugin implements Plugin<Project> {
             }
             if (remapSpigot.outDeobf.exists()) {
                 project.configurations.compile.dependencies.add(project.dependencies.create(project.files(remapSpigot.outDeobf)))
+            }
+            if (arclightExt.reobfVersion) {
+                File map = project.file("${project.buildDir}/arclight_cache/tmp_srg/reobf_version_${arclightExt.bukkitVersion}.srg")
+                map.text = "PK: org/bukkit/craftbukkit/v org/bukkit/craftbukkit/${arclightExt.bukkitVersion}"
+                project.tasks.withType(RenameJarInPlace).each { task ->
+                    task.doFirst {
+                        project.logger.info "Contributing tsrg mappings ({}) to {} in {}", map, task.name, task.project
+                        task.extraMapping(map)
+                    }
+                }
             }
         }
     }

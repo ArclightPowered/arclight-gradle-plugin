@@ -1,8 +1,6 @@
 package io.izzel.arclight.gradle
 
 import org.gradle.api.Project
-import org.gradle.api.artifacts.DependencyResolutionListener
-import org.gradle.api.artifacts.ResolvableDependencies
 
 class ArclightExtension {
 
@@ -11,35 +9,12 @@ class ArclightExtension {
     private String bukkitVersion
     private String forgeVersion
     private File accessTransformer
+    private boolean wipeVersion = false
+    private boolean reobfVersion = false
     private List<String> installerInfo = new ArrayList<>()
 
     ArclightExtension(Project project) {
         this.project = project
-        setup()
-    }
-
-    void setup() {
-        injectDependencies()
-    }
-
-    void injectDependencies() {
-        def proj = project
-        def file = project.file("${project.buildDir}/arclight_cache/spigot-$mcVersion-mapped-deobf.jar")
-        def deps = project.configurations.compile.dependencies
-        project.gradle.addListener(new DependencyResolutionListener() {
-            @Override
-            void beforeResolve(ResolvableDependencies resolvableDependencies) {
-                if (file.exists()) {
-                    println 1
-                    deps.add(proj.dependencies.create(file))
-                }
-                proj.gradle.removeListener(this)
-            }
-
-            @Override
-            void afterResolve(ResolvableDependencies resolvableDependencies) {
-            }
-        })
     }
 
     String getMcVersion() {
@@ -80,5 +55,21 @@ class ArclightExtension {
 
     void setForgeVersion(String forgeVersion) {
         this.forgeVersion = forgeVersion
+    }
+
+    boolean getWipeVersion() {
+        return wipeVersion
+    }
+
+    void setWipeVersion(boolean wipeVersion) {
+        this.wipeVersion = wipeVersion
+    }
+
+    boolean getReobfVersion() {
+        return reobfVersion
+    }
+
+    void setReobfVersion(boolean reobfVersion) {
+        this.reobfVersion = reobfVersion
     }
 }
