@@ -134,7 +134,10 @@ class ArclightGradlePlugin implements Plugin<Project> {
             }
             if (arclightExt.reobfVersion) {
                 File map = project.file("${project.buildDir}/arclight_cache/tmp_srg/reobf_version_${arclightExt.bukkitVersion}.srg")
-                if (!map.exists()) map.createNewFile()
+                if (!map.exists()) {
+                    map.parentFile.mkdirs()
+                    map.createNewFile()
+                }
                 map.text = "PK: org/bukkit/craftbukkit/v org/bukkit/craftbukkit/${arclightExt.bukkitVersion}"
                 project.tasks.withType(RenameJarInPlace).each { task ->
                     task.doFirst {
