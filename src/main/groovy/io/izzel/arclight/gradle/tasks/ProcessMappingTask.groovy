@@ -245,7 +245,7 @@ class ProcessMappingTask extends DefaultTask {
                 return result.iterator().next().key.replace(cl + '/', '').replace(desc, '').trim()
             }
         }
-        if (method == '<init>') println("No mapping found for $root/$method $desc")
+        if (method != '<init>') println("No mapping found for $root/$method $desc")
         return method
     }
 

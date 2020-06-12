@@ -11,6 +11,7 @@ import net.minecraftforge.gradle.userdev.tasks.RenameJarInPlace
 import org.gradle.api.InvalidUserDataException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.DependencyArtifact
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.StopExecutionException
@@ -20,6 +21,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.attribute.BasicFileAttributes
+import java.security.MessageDigest
 
 class ArclightGradlePlugin implements Plugin<Project> {
 
@@ -125,7 +127,13 @@ class ArclightGradlePlugin implements Plugin<Project> {
                             return "${it.group}:${it.name}:${it.version}"
                         }
                     }
-                    def output = [installer: [minecraft: arclightExt.mcVersion, forge: arclightExt.forgeVersion], libraries: libs]
+                    def output = [
+                            installer: [
+                                    minecraft: arclightExt.mcVersion,
+                                    forge    : arclightExt.forgeVersion
+                            ],
+                            libraries: ArclightGradlePlugin.artifacts(project, libs)
+                    ]
                     installer.text = JsonOutput.toJson(output)
                 }
             }
@@ -147,5 +155,41 @@ class ArclightGradlePlugin implements Plugin<Project> {
                 }
             }
         }
+    }
+
+    private static def sha1(file) {
+        MessageDigest md = MessageDigest.getInstance('SHA-1')
+        file.eachByte 4096, { bytes, size ->
+            md.update(bytes, 0 as byte, size)
+        }
+        return md.digest().collect { String.format "%02x", it }.join()
+    }
+
+    private static Map<String, String> artifacts(Project project, List<String> arts) {
+        def ret = new HashMap<String, String>()
+        def cfg = project.configurations.create("art_rev_" + System.currentTimeMillis())
+        cfg.transitive = false
+        arts.each {
+            def dep = project.dependencies.create(it)
+            cfg.dependencies.add(dep)
+        }
+        cfg.resolve()
+        cfg.resolvedConfiguration.resolvedArtifacts.each { it ->
+            def art = [
+                    group     : it.moduleVersion.id.group,
+                    name      : it.moduleVersion.id.name,
+                    version   : it.moduleVersion.id.version,
+                    classifier: it.classifier,
+                    extension : it.extension,
+                    file      : it.file
+            ]
+            def desc = "${art.group}:${art.name}:${art.version}"
+            if (art.classifier != null)
+                desc += ":${art.classifier}"
+            if (art.extension != 'jar')
+                desc += "@${art.extension}"
+            ret.put(desc.toString(), sha1(art.file))
+        }
+        return arts.collectEntries { [(it.toString()): ret.get(it.toString())] }
     }
 }
