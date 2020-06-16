@@ -45,6 +45,8 @@ class ArclightGradlePlugin implements Plugin<Project> {
         def processMapping = project.tasks.create('processMapping', ProcessMappingTask)
         def remapSpigot = project.tasks.create('remapSpigotJar', RemapSpigotTask)
         def generateMeta = project.tasks.create('generateArclightMeta', Copy)
+        def downloadInstaller = project.tasks.create('downloadInstaller')
+        generateMeta.dependsOn(downloadInstaller)
         def metaFolder = project.file("${project.buildDir}/arclight_cache/meta")
         project.sourceSets.main.output.dir metaFolder, builtBy: generateMeta
         generateMeta.configure { Copy task ->
@@ -89,6 +91,12 @@ class ArclightGradlePlugin implements Plugin<Project> {
                 }
             }
             project.tasks.compileJava.dependsOn(remapSpigot)
+            def installerJar = project.file("${project.buildDir}/arclight_cache/forge-${arclightExt.mcVersion}-${arclightExt.forgeVersion}-installer.jar")
+            downloadInstaller.doFirst {
+                if (installerJar.exists()) throw new StopExecutionException()
+                def installerUrl = "https://files.minecraftforge.net/maven/net/minecraftforge/forge/${arclightExt.mcVersion}-${arclightExt.forgeVersion}/forge-${arclightExt.mcVersion}-${arclightExt.forgeVersion}-installer.jar"
+                Utils.download(installerUrl, installerJar)
+            }
             generateMeta.configure { Copy task ->
                 task.doFirst {
                     Files.walkFileTree(metaFolder.toPath(), new SimpleFileVisitor<Path>() {
@@ -97,6 +105,7 @@ class ArclightGradlePlugin implements Plugin<Project> {
                             Files.delete(file)
                             return FileVisitResult.CONTINUE
                         }
+
                         @Override
                         FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
                             Files.delete(dir)
@@ -130,7 +139,8 @@ class ArclightGradlePlugin implements Plugin<Project> {
                     def output = [
                             installer: [
                                     minecraft: arclightExt.mcVersion,
-                                    forge    : arclightExt.forgeVersion
+                                    forge    : arclightExt.forgeVersion,
+                                    hash     : ArclightGradlePlugin.sha1(installerJar)
                             ],
                             libraries: ArclightGradlePlugin.artifacts(project, libs)
                     ]
