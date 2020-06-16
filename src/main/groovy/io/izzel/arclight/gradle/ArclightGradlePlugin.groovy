@@ -94,6 +94,9 @@ class ArclightGradlePlugin implements Plugin<Project> {
             def installerJar = project.file("${project.buildDir}/arclight_cache/forge-${arclightExt.mcVersion}-${arclightExt.forgeVersion}-installer.jar")
             downloadInstaller.doFirst {
                 if (installerJar.exists()) throw new StopExecutionException()
+                if (installerJar.parentFile != null) {
+                    installerJar.parentFile.mkdirs()
+                }
                 def installerUrl = "https://files.minecraftforge.net/maven/net/minecraftforge/forge/${arclightExt.mcVersion}-${arclightExt.forgeVersion}/forge-${arclightExt.mcVersion}-${arclightExt.forgeVersion}-installer.jar"
                 Utils.download(installerUrl, installerJar)
             }
