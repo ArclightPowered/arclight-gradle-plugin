@@ -26,6 +26,7 @@ class RemapSpigotTask extends DefaultTask {
     private List<String> includes
     private List<String> excludes
     private String bukkitVersion
+    private File inAt
 
     RemapSpigotTask() {
         includes = new ArrayList<>()
@@ -69,6 +70,10 @@ class RemapSpigotTask extends DefaultTask {
             tmpSrg.text = "PK: org/bukkit/craftbukkit/$bukkitVersion org/bukkit/craftbukkit/v"
             args.add('-m')
             args.add(tmpSrg.toFile().canonicalPath)
+        }
+        if (inAt) {
+            args.add('--access-transformer')
+            args.add(inAt.canonicalPath)
         }
         project.exec {
             commandLine = args
@@ -187,5 +192,15 @@ class RemapSpigotTask extends DefaultTask {
 
     void setBukkitVersion(String bukkitVersion) {
         this.bukkitVersion = bukkitVersion
+    }
+
+    @InputFile
+    @Optional
+    File getInAt() {
+        return inAt
+    }
+
+    void setInAt(File inAt) {
+        this.inAt = inAt
     }
 }
