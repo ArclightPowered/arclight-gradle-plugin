@@ -1,5 +1,7 @@
 package io.izzel.arclight.gradle.tasks
 
+import com.google.common.collect.MultimapBuilder
+import com.google.common.collect.SetMultimap
 import io.izzel.arclight.gradle.Utils
 import net.md_5.specialsource.InheritanceMap
 import net.md_5.specialsource.Jar
@@ -10,11 +12,7 @@ import net.md_5.specialsource.provider.JarProvider
 import net.md_5.specialsource.provider.JointProvider
 import net.md_5.specialsource.transformer.MappingTransformer
 import org.gradle.api.DefaultTask
-import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.InputDirectory
-import org.gradle.api.tasks.InputFile
-import org.gradle.api.tasks.OutputDirectory
-import org.gradle.api.tasks.TaskAction
+import org.gradle.api.tasks.*
 import org.objectweb.asm.Type
 import org.objectweb.asm.commons.Remapper
 
@@ -73,6 +71,16 @@ class ProcessMappingTask extends DefaultTask {
             !it.startsWith('#') && !it.trim().empty
         }.collect { it.toString() }
         processors.forEach { it.call(csrg, ats, srg) }
+        def srgMethodAlias = MultimapBuilder.hashKeys().hashSetValues().build() as SetMultimap<String, String>
+        srg.methods.entrySet().forEach {
+            def spl = it.key.split(' ')
+            def srgMethod = it.value
+            if (srgMethod.startsWith('func_')) {
+                def i = spl[0].lastIndexOf('/')
+                def notch = spl[0].substring(i + 1)
+                srgMethodAlias.put(srgMethod, notch)
+            }
+        }
         def srgRev = srg.classes.collectEntries { [(it.value): it.key] }
         def csrgRev = csrg.classes.collectEntries { [(it.value): it.key] }
         def im = new InheritanceMap()
@@ -195,6 +203,18 @@ class ProcessMappingTask extends DefaultTask {
                     def csrgCl = notchToCsrgMapper.map(owner)
                     def csrgDesc = notchToCsrgMapper.mapMethodDesc(desc)
                     def csrgMethod = ProcessMappingTask.findCsrg(prov, csrgCl, notch, csrgDesc, csrg.methods)
+                    if (csrgMethod == null) {
+                        for (def alias : srgMethodAlias.get(srgMethod)) {
+                            if (alias != notch) {
+                                def find = ProcessMappingTask.findCsrg(prov, csrgCl, alias, csrgDesc, csrg.methods)
+                                if (find != null) {
+                                    csrgMethod = find
+                                    break
+                                }
+                            }
+                        }
+                    }
+                    if (csrgMethod == null) csrgMethod = notch
                     writer.println("MD: $csrgCl/$csrgMethod $csrgDesc ${srg.classes.get(owner)}/$srgMethod ${notchToSrgMapper.mapMethodDesc(desc)}")
                 }
             }
@@ -209,7 +229,7 @@ class ProcessMappingTask extends DefaultTask {
                 if (csrg) return csrg
             }
         }
-        return notch
+        return null
     }
 
     private static List<String> allRet(InheritanceProvider prov, String desc) {
