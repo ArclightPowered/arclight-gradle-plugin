@@ -152,9 +152,6 @@ class ProcessMappingTask extends DefaultTask {
                     def srgDesc = csrgToSrgMapper.mapMethodDesc(desc)
                     def srgMethod = srg.methods.get("${csrgToNotchMapper.map(cl)}/$notch ${csrgToNotchMapper.mapMethodDesc(desc)}".toString())
                     srgMethod = srgMethod == null ? notch : srgMethod
-                    if (csrgToSrgMapper.map(cl) == null) {
-                        println("$access $cl $srgMethod${srgDesc}")
-                    }
                     writer.println("$access ${csrgToSrgMapper.map(cl).replace('/', '.')} $srgMethod${srgDesc}")
                 } else {
                     if (entry.count('/') == 3) {
