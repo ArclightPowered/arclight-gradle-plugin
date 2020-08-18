@@ -46,6 +46,7 @@ class ProcessMappingTask extends DefaultTask {
             @Override
             String map(String className) {
                 if (className == 'net/minecraft/server/MinecraftServer') return "net/minecraft/server/$bukkitVersion/MinecraftServer"
+                if (className == 'net/minecraft/server/Main') return "net/minecraft/server/$bukkitVersion/Main"
                 if (className.charAt(0).isLowerCase()) return className
                 if (className.contains('/')) return className
                 "net/minecraft/server/$bukkitVersion/$className"
@@ -64,6 +65,7 @@ class ProcessMappingTask extends DefaultTask {
         }
         csrg.loadMappings(Files.newBufferedReader(clFile.toPath()), transformer, transformer, false)
         csrg.classes.put('net/minecraft/server/MinecraftServer', "net/minecraft/server/$bukkitVersion/MinecraftServer".toString())
+        csrg.classes.put('net/minecraft/server/Main', "net/minecraft/server/$bukkitVersion/Main".toString())
         PKG.each { csrg.packages.put(it, 'org/bukkit/craftbukkit/libs/' + it) }
         innerClasses(csrg, srg)
         csrg.loadMappings(Files.newBufferedReader(memberFile.toPath()), transformer, transformer, false)
@@ -150,6 +152,9 @@ class ProcessMappingTask extends DefaultTask {
                     def srgDesc = csrgToSrgMapper.mapMethodDesc(desc)
                     def srgMethod = srg.methods.get("${csrgToNotchMapper.map(cl)}/$notch ${csrgToNotchMapper.mapMethodDesc(desc)}".toString())
                     srgMethod = srgMethod == null ? notch : srgMethod
+                    if (csrgToSrgMapper.map(cl) == null) {
+                        println("$access $cl $srgMethod${srgDesc}")
+                    }
                     writer.println("$access ${csrgToSrgMapper.map(cl).replace('/', '.')} $srgMethod${srgDesc}")
                 } else {
                     if (entry.count('/') == 3) {
