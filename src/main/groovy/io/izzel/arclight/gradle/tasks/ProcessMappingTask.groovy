@@ -80,7 +80,7 @@ class ProcessMappingTask extends DefaultTask {
             if (srgMethod.startsWith('func_')) {
                 def i = spl[0].lastIndexOf('/')
                 def notch = spl[0].substring(i + 1)
-                srgMethodAlias.put(srgMethod, notch)
+                srgMethodAlias.put(srgMethod, notch + ' ' + spl[1])
             }
         }
         def srgRev = srg.classes.collectEntries { [(it.value): it.key] }
@@ -207,8 +207,10 @@ class ProcessMappingTask extends DefaultTask {
                     def csrgMethod = ProcessMappingTask.findCsrg(prov, csrgCl, notch, csrgDesc, csrg.methods)
                     if (csrgMethod == null) {
                         for (def alias : srgMethodAlias.get(srgMethod)) {
-                            if (alias != notch) {
-                                def find = ProcessMappingTask.findCsrg(prov, csrgCl, alias, csrgDesc, csrg.methods)
+                            if (alias != (notch + ' ' + desc)) {
+                                def aliasName = alias.split(' ')[0]
+                                def aliasDesc = alias.split(' ')[1]
+                                def find = ProcessMappingTask.findCsrg(prov, csrgCl, aliasName, notchToCsrgMapper.mapMethodDesc(aliasDesc), csrg.methods)
                                 if (find != null) {
                                     csrgMethod = find
                                     break
