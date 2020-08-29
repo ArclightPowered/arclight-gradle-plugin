@@ -136,6 +136,17 @@ class ProcessMappingTask extends DefaultTask {
                 return srg.classes.get(internalName)
             }
         }
+        def packageMapper = new Remapper() {
+            @Override
+            String map(String internalName) {
+                for (def pkg : PKG) {
+                    if (internalName.startsWith(pkg)) {
+                        return 'org/bukkit/craftbukkit/libs/' + internalName
+                    }
+                }
+                return internalName
+            }
+        }
         Utils.using(new PrintWriter(Files.newBufferedWriter(outDir.toPath().resolve('bukkit_at.at'), StandardOpenOption.CREATE))) { writer ->
             ats.forEach {
                 def spl = it.split(' ')
@@ -219,7 +230,7 @@ class ProcessMappingTask extends DefaultTask {
                         }
                     }
                     if (csrgMethod == null) csrgMethod = notch
-                    writer.println("MD: $csrgCl/$csrgMethod $csrgDesc ${srg.classes.get(owner)}/$srgMethod ${notchToSrgMapper.mapMethodDesc(desc)}")
+                    writer.println("MD: $csrgCl/$csrgMethod ${packageMapper.mapMethodDesc(csrgDesc)} ${srg.classes.get(owner)}/$srgMethod ${notchToSrgMapper.mapMethodDesc(desc)}")
                 }
             }
         }
