@@ -9,10 +9,10 @@ Gradle plugin designed for Arclight development.
 ```groovy
 buildscript {
     repositories {
-        maven { url = 'https://jitpack.io' }
+        maven { url = 'https://maven.izzel.io/releases' }
     }
     dependencies {
-        classpath 'com.github.ArclightTeam:arclight-gradle-plugin:1.0'
+        classpath 'io.izzel.arclight:arclight-gradle-plugin:1.0'
     }
 }
 ```
