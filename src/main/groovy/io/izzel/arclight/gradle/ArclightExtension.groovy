@@ -12,6 +12,7 @@ class ArclightExtension {
     private boolean wipeVersion = false
     private boolean reobfVersion = false
     private List<String> installerInfo = new ArrayList<>()
+    private boolean sharedSpigot = true
 
     ArclightExtension(Project project) {
         this.project = project
@@ -71,5 +72,13 @@ class ArclightExtension {
 
     void setReobfVersion(boolean reobfVersion) {
         this.reobfVersion = reobfVersion
+    }
+
+    boolean getSharedSpigot() {
+        return sharedSpigot
+    }
+
+    void setSharedSpigot(boolean sharedSpigot) {
+        this.sharedSpigot = sharedSpigot
     }
 }

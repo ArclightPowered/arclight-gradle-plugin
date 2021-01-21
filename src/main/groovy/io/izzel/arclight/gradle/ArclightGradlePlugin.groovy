@@ -33,7 +33,7 @@ class ArclightGradlePlugin implements Plugin<Project> {
         def arclightExt = project.extensions.create('arclight', ArclightExtension, project)
         def conf = project.configurations.create('arclight')
         project.configurations.compile.extendsFrom(conf)
-        def buildTools = project.file("${project.buildDir}/arclight_cache/buildtools")
+        def buildTools = project.file("${arclightExt.sharedSpigot ? project.buildDir : project.rootProject.buildDir}/arclight_cache/buildtools")
         def buildToolsFile = new File(buildTools, 'BuildTools.jar')
         def downloadSpigot = project.tasks.create('downloadBuildTools', DownloadBuildToolsTask, {
             it.output = buildToolsFile
