@@ -10,11 +10,14 @@ import net.md_5.specialsource.provider.ClassLoaderProvider
 import net.md_5.specialsource.provider.InheritanceProvider
 import net.md_5.specialsource.provider.JarProvider
 import net.md_5.specialsource.provider.JointProvider
+import net.md_5.specialsource.repo.ClassRepo
 import net.md_5.specialsource.transformer.MappingTransformer
 import org.gradle.api.DefaultTask
 import org.gradle.api.tasks.*
+import org.objectweb.asm.ClassReader
 import org.objectweb.asm.Type
 import org.objectweb.asm.commons.Remapper
+import org.objectweb.asm.tree.ClassNode
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -81,26 +84,47 @@ class ProcessMappingTask extends DefaultTask {
                 def i = spl[0].lastIndexOf('/')
                 def notch = spl[0].substring(i + 1)
                 srgMethodAlias.put(srgMethod, notch + ' ' + spl[1])
+            } else {
+                def i = spl[0].lastIndexOf('/')
+                def notch = spl[0].substring(i + 1)
+                srgMethodAlias.put(spl[0].substring(0, i + 1) + srgMethod, notch + ' ' + spl[1])
             }
         }
         def srgRev = srg.classes.collectEntries { [(it.value): it.key] }
         def csrgRev = csrg.classes.collectEntries { [(it.value): it.key] }
         def im = new InheritanceMap()
         def prov = new JointProvider()
-        prov.add(new JarProvider(Jar.init(inJar)))
         prov.add(new ClassLoaderProvider(ClassLoader.getSystemClassLoader()))
+        prov.add(new JarProvider(Jar.init(inJar)))
         def mappingProv = new InheritanceProvider() {
             @Override
             Collection<String> getParents(String className) {
                 def bukkit = csrg.classes.get(srgRev.get(className))
                 if (!bukkit) return prov.getParents(className)
-                return prov.getParents(bukkit).collect { srg.classes.get(csrgRev.get(it)) }
+                return prov.getParents(bukkit).collect { srg.classes.get(csrgRev.get(it)) ?: it }
             }
         }
         im.generate(mappingProv, srg.classes.values())
         Utils.using(new PrintWriter(Files.newBufferedWriter(outDir.toPath().resolve('inheritanceMap.txt'), StandardOpenOption.CREATE))) {
             im.save(it)
         }
+        im = new InheritanceMap() {
+            @Override
+            void generate(InheritanceProvider inheritanceProvider, Collection<String> classes) {
+                for (String className : classes) {
+                    Collection<String> parents = inheritanceProvider.getParents(className);
+                    if (parents == null) {
+                        // System.out.println("No inheritance information found for " + className);
+                    } else {
+                        parents.removeIf { it == null }
+                        if (parents.size() > 0) {
+                            setParents(className, parents);
+                        }
+                    }
+                }
+            }
+        }
+        im.generate(mappingProv, srg.classes.values())
         im.generate(prov, csrg.classes.values())
 
         def versionFix = new Remapper() {
@@ -115,25 +139,25 @@ class ProcessMappingTask extends DefaultTask {
         def csrgToSrgMapper = new Remapper() {
             @Override
             String map(String internalName) {
-                return srg.classes.get(csrgRev.get(versionFix.map(internalName)))
+                return srg.classes.get(csrgRev.get(versionFix.map(internalName))) ?: internalName
             }
         }
         def csrgToNotchMapper = new Remapper() {
             @Override
             String map(String internalName) {
-                return csrgRev.get(internalName)
+                return csrgRev.get(internalName) ?: internalName
             }
         }
         def notchToCsrgMapper = new Remapper() {
             @Override
             String map(String internalName) {
-                return csrg.classes.get(internalName)
+                return csrg.classes.get(internalName) ?: internalName
             }
         }
         def notchToSrgMapper = new Remapper() {
             @Override
             String map(String internalName) {
-                return srg.classes.get(internalName)
+                return srg.classes.get(internalName) ?: internalName
             }
         }
         def packageMapper = new Remapper() {
@@ -215,13 +239,14 @@ class ProcessMappingTask extends DefaultTask {
                 if (csrg.classes.containsKey(owner)) {
                     def csrgCl = notchToCsrgMapper.map(owner)
                     def csrgDesc = notchToCsrgMapper.mapMethodDesc(desc)
-                    def csrgMethod = ProcessMappingTask.findCsrg(prov, csrgCl, notch, csrgDesc, csrg.methods)
+                    def csrgMethod = ProcessMappingTask.findCsrg(prov, csrgCl, notch, csrgDesc, csrg.methods, false)
                     if (csrgMethod == null) {
-                        for (def alias : srgMethodAlias.get(srgMethod)) {
+                        def extendSearch = !srgMethod.startsWith('func_')
+                        for (def alias : srgMethodAlias.get(extendSearch ? owner + '/' + srgMethod : srgMethod)) {
                             if (alias != (notch + ' ' + desc)) {
                                 def aliasName = alias.split(' ')[0]
                                 def aliasDesc = alias.split(' ')[1]
-                                def find = ProcessMappingTask.findCsrg(prov, csrgCl, aliasName, notchToCsrgMapper.mapMethodDesc(aliasDesc), csrg.methods)
+                                def find = ProcessMappingTask.findCsrg(prov, csrgCl, aliasName, notchToCsrgMapper.mapMethodDesc(aliasDesc), csrg.methods, extendSearch)
                                 if (find != null) {
                                     csrgMethod = find
                                     break
@@ -236,15 +261,34 @@ class ProcessMappingTask extends DefaultTask {
         }
     }
 
-    private static String findCsrg(InheritanceProvider prov, String owner, String notch, String desc, Map<String, String> map) {
+    private static String findCsrg(InheritanceProvider prov, String owner, String notch, String desc, Map<String, String> map, boolean extSearch) {
         def params = desc.substring(0, desc.lastIndexOf(')') + 1)
         for (def ret : allRet(prov, Type.getReturnType(desc).descriptor)) {
             for (def cl : allOf(prov, owner)) {
                 def csrg = map.get("$cl/$notch $params$ret".toString())
                 if (csrg) return csrg
+                else if (extSearch && cl.contains('/')) {
+                    def node = findNode(cl)
+                    if (node) {
+                        def methodNode = node.methods.find { it.name == notch && it.desc == params+ret }
+                        if (methodNode) return notch
+                    }
+                }
             }
         }
         return null
+    }
+
+    private static ClassNode findNode(String name) {
+        ClassReader cr
+        try {
+            cr = new ClassReader(name)
+        } catch (Exception ex) {
+            return null
+        }
+        ClassNode node = new ClassNode()
+        cr.accept(node, ClassReader.SKIP_CODE)
+        return node
     }
 
     private static List<String> allRet(InheritanceProvider prov, String desc) {
