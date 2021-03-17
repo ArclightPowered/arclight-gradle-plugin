@@ -50,9 +50,16 @@ class ProcessMappingTask extends DefaultTask {
             String map(String className) {
                 if (className == 'net/minecraft/server/MinecraftServer') return "net/minecraft/server/$bukkitVersion/MinecraftServer"
                 if (className == 'net/minecraft/server/Main') return "net/minecraft/server/$bukkitVersion/Main"
-                if (className.charAt(0).isLowerCase()) return className
-                if (className.contains('/')) return className
-                "net/minecraft/server/$bukkitVersion/$className"
+                if (className.contains('/')) {
+                    if (className.startsWith('net/minecraft/') || className.startsWith('com/mojang/math/')) {
+                        className = className.substring(className.lastIndexOf('/') + 1)
+                    } else {
+                        return className
+                    }
+                } else {
+                    if (className.charAt(0).isLowerCase()) return className
+                }
+                return "net/minecraft/server/$bukkitVersion/$className"
             }
         }
         def transformer = new MappingTransformer() {
