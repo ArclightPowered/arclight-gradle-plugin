@@ -26,7 +26,7 @@ import java.nio.file.StandardOpenOption
 class ProcessMappingTask extends DefaultTask {
 
     private static final def PKG = [
-            'it/unimi/dsi/fastutil', 'org/apache/commons', 'jline'
+            'it', 'org/apache', 'jline', 'org/codehaus', 'org/eclipse'
     ]
 
     private File buildData
@@ -277,7 +277,7 @@ class ProcessMappingTask extends DefaultTask {
                 else if (extSearch && cl.contains('/')) {
                     def node = findNode(cl)
                     if (node) {
-                        def methodNode = node.methods.find { it.name == notch && it.desc == params+ret }
+                        def methodNode = node.methods.find { it.name == notch && it.desc == params + ret }
                         if (methodNode) return notch
                     }
                 }

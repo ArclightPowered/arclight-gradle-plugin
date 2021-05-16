@@ -40,6 +40,8 @@ class RemapSpigotTask extends DefaultTask {
         excludes = new ArrayList<>()
         excludes.add('org/bukkit/craftbukkit/libs/it')
         excludes.add('org/bukkit/craftbukkit/libs/org/apache')
+        excludes.add('org/bukkit/craftbukkit/libs/org/codehaus')
+        excludes.add('org/bukkit/craftbukkit/libs/org/eclipse')
         excludes.add('org/bukkit/craftbukkit/libs/jline')
     }
 
