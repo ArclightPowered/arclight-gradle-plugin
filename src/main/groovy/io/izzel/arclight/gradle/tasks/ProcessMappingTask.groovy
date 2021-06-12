@@ -2,6 +2,7 @@ package io.izzel.arclight.gradle.tasks
 
 import com.google.common.collect.MultimapBuilder
 import com.google.common.collect.SetMultimap
+import groovy.transform.CompileStatic
 import io.izzel.arclight.gradle.Utils
 import net.md_5.specialsource.InheritanceMap
 import net.md_5.specialsource.Jar
@@ -10,7 +11,6 @@ import net.md_5.specialsource.provider.ClassLoaderProvider
 import net.md_5.specialsource.provider.InheritanceProvider
 import net.md_5.specialsource.provider.JarProvider
 import net.md_5.specialsource.provider.JointProvider
-import net.md_5.specialsource.repo.ClassRepo
 import net.md_5.specialsource.transformer.MappingTransformer
 import org.gradle.api.DefaultTask
 import org.gradle.api.tasks.*
@@ -19,10 +19,10 @@ import org.objectweb.asm.Type
 import org.objectweb.asm.commons.Remapper
 import org.objectweb.asm.tree.ClassNode
 
-import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.StandardOpenOption
 
+@CompileStatic
 class ProcessMappingTask extends DefaultTask {
 
     private static final def PKG = [
@@ -36,12 +36,12 @@ class ProcessMappingTask extends DefaultTask {
     private String bukkitVersion
     private File outDir
     private List<Closure<Void>> processors = new ArrayList<>()
+    private String packageName
 
     @TaskAction
     void create() {
         def clFile = new File(buildData, "mappings/bukkit-$mcVersion-cl.csrg")
         def memberFile = new File(buildData, "mappings/bukkit-$mcVersion-members.csrg")
-        def atFile = new File(buildData, "mappings/bukkit-${mcVersion}.at")
         def srg = new JarMapping()
         srg.loadMappings(inSrg)
         def csrg = new JarMapping()
@@ -76,18 +76,15 @@ class ProcessMappingTask extends DefaultTask {
         csrg.loadMappings(Files.newBufferedReader(clFile.toPath()), transformer, transformer, false)
         csrg.classes.put('net/minecraft/server/MinecraftServer', "net/minecraft/server/$bukkitVersion/MinecraftServer".toString())
         csrg.classes.put('net/minecraft/server/Main', "net/minecraft/server/$bukkitVersion/Main".toString())
-        PKG.each { csrg.packages.put(it, 'org/bukkit/craftbukkit/libs/' + it) }
+        PKG.each { String it -> csrg.packages.put(it, 'org/bukkit/craftbukkit/libs/' + it) }
         innerClasses(csrg, srg)
         csrg.loadMappings(Files.newBufferedReader(memberFile.toPath()), transformer, transformer, false)
-        def ats = Files.lines(atFile.toPath(), StandardCharsets.UTF_8).filter {
-            !it.startsWith('#') && !it.trim().empty
-        }.collect { it.toString() }
-        processors.forEach { it.call(csrg, ats, srg) }
+        processors.forEach { Closure<Void> it -> it.call(csrg, srg) }
         def srgMethodAlias = MultimapBuilder.hashKeys().hashSetValues().build() as SetMultimap<String, String>
-        srg.methods.entrySet().forEach {
+        srg.methods.entrySet().forEach { Map.Entry<String, String> it ->
             def spl = it.key.split(' ')
             def srgMethod = it.value
-            if (srgMethod.startsWith('func_')) {
+            if (srgMethod.startsWith('func_') || srgMethod.startsWith('m_')) {
                 def i = spl[0].lastIndexOf('/')
                 def notch = spl[0].substring(i + 1)
                 srgMethodAlias.put(srgMethod, notch + ' ' + spl[1])
@@ -97,8 +94,8 @@ class ProcessMappingTask extends DefaultTask {
                 srgMethodAlias.put(spl[0].substring(0, i + 1) + srgMethod, notch + ' ' + spl[1])
             }
         }
-        def srgRev = srg.classes.collectEntries { [(it.value): it.key] }
-        def csrgRev = csrg.classes.collectEntries { [(it.value): it.key] }
+        def srgRev = srg.classes.collectEntries { Map.Entry<String, String> it -> [(it.value): it.key] }
+        def csrgRev = csrg.classes.collectEntries { Map.Entry<String, String> it -> [(it.value): it.key] }
         def im = new InheritanceMap()
         def prov = new JointProvider()
         prov.add(new ClassLoaderProvider(ClassLoader.getSystemClassLoader()))
@@ -108,53 +105,16 @@ class ProcessMappingTask extends DefaultTask {
             Collection<String> getParents(String className) {
                 def bukkit = csrg.classes.get(srgRev.get(className))
                 if (!bukkit) return prov.getParents(className)
-                return prov.getParents(bukkit).collect { srg.classes.get(csrgRev.get(it)) ?: it }
+                def parents = prov.getParents(bukkit)
+                if (!parents) return prov.getParents(className)
+                return parents.collect { srg.classes.get(csrgRev.get(it)) ?: it }
             }
         }
         im.generate(mappingProv, srg.classes.values())
-        Utils.using(new PrintWriter(Files.newBufferedWriter(outDir.toPath().resolve('inheritanceMap.txt'), StandardOpenOption.CREATE))) {
+        Utils.using(new PrintWriter(Files.newBufferedWriter(outDir.toPath().resolve('inheritanceMap.txt'), StandardOpenOption.CREATE))) { PrintWriter it ->
             im.save(it)
         }
-        im = new InheritanceMap() {
-            @Override
-            void generate(InheritanceProvider inheritanceProvider, Collection<String> classes) {
-                for (String className : classes) {
-                    Collection<String> parents = inheritanceProvider.getParents(className);
-                    if (parents == null) {
-                        // System.out.println("No inheritance information found for " + className);
-                    } else {
-                        parents.removeIf { it == null }
-                        if (parents.size() > 0) {
-                            setParents(className, parents);
-                        }
-                    }
-                }
-            }
-        }
-        im.generate(mappingProv, srg.classes.values())
-        im.generate(prov, csrg.classes.values())
 
-        def versionFix = new Remapper() {
-            @Override
-            String map(String internalName) {
-                if (internalName.startsWith('net/minecraft/server/') && !internalName.startsWith("net/minecraft/server/$bukkitVersion/")) {
-                    internalName = internalName.replace('net/minecraft/server/', "net/minecraft/server/$bukkitVersion/")
-                }
-                return internalName
-            }
-        }
-        def csrgToSrgMapper = new Remapper() {
-            @Override
-            String map(String internalName) {
-                return srg.classes.get(csrgRev.get(versionFix.map(internalName))) ?: internalName
-            }
-        }
-        def csrgToNotchMapper = new Remapper() {
-            @Override
-            String map(String internalName) {
-                return csrgRev.get(internalName) ?: internalName
-            }
-        }
         def notchToCsrgMapper = new Remapper() {
             @Override
             String map(String internalName) {
@@ -170,7 +130,7 @@ class ProcessMappingTask extends DefaultTask {
         def packageMapper = new Remapper() {
             @Override
             String map(String internalName) {
-                for (def pkg : PKG) {
+                for (String pkg : PKG) {
                     if (internalName.startsWith(pkg)) {
                         return 'org/bukkit/craftbukkit/libs/' + internalName
                     }
@@ -178,78 +138,40 @@ class ProcessMappingTask extends DefaultTask {
                 return internalName
             }
         }
-        Utils.using(new PrintWriter(Files.newBufferedWriter(outDir.toPath().resolve('bukkit_at.at'), StandardOpenOption.CREATE))) { writer ->
-            ats.forEach {
-                def spl = it.split(' ')
-                def access = spl[0].replace('inal', '')
-                def entry = spl[1]
-                def i = entry.indexOf('(')
-                if (i != -1) {
-                    def desc = versionFix.mapMethodDesc(entry.substring(i))
-                    def name = entry.substring(0, i)
-                    def i2 = name.lastIndexOf('/')
-                    def method = name.substring(i2 + 1)
-                    def cl = versionFix.map(name.substring(0, i2))
-                    def notch = ProcessMappingTask.find(im, cl, method, desc, csrg.methods)
-                    def srgDesc = csrgToSrgMapper.mapMethodDesc(desc)
-                    def srgMethod = srg.methods.get("${csrgToNotchMapper.map(cl)}/$notch ${csrgToNotchMapper.mapMethodDesc(desc)}".toString())
-                    srgMethod = srgMethod == null ? notch : srgMethod
-                    writer.println("$access ${csrgToSrgMapper.map(cl).replace('/', '.')} $srgMethod${srgDesc}")
-                } else {
-                    if (entry.count('/') == 3) {
-                        writer.println("$access ${csrgToSrgMapper.map(entry).replace('/', '.')}")
-                    } else if (entry.count('/') == 4) {
-                        def i2 = entry.lastIndexOf('/')
-                        def cl = versionFix.map(entry.substring(0, i2))
-                        def field = entry.substring(i2 + 1)
-                        def result = csrg.fields.findAll { it.value == field && it.key.startsWith(cl + '/') }
-                        if (result.isEmpty()) {
-                            println("No mapping found for $it")
-                        } else {
-                            def notch = result.iterator().next().key.replace(cl + '/', '')
-                            def srgField = srg.fields.get("${csrgToNotchMapper.map(cl)}/${notch}".toString())
-                            srgField = srgField == null ? notch : srgField
-                            writer.println("$access ${csrgToSrgMapper.map(cl).replace('/', '.')} $srgField")
-                        }
-                    }
-                }
-            }
-        }
-        Utils.using(new PrintWriter(Files.newBufferedWriter(outDir.toPath().resolve('bukkit_srg.srg'), StandardOpenOption.CREATE))) { writer ->
+        Utils.using(new PrintWriter(Files.newBufferedWriter(outDir.toPath().resolve('bukkit_srg.srg'), StandardOpenOption.CREATE))) { PrintWriter writer ->
             csrg.packages.each {
                 writer.println("PK: ${it.value} ${it.key}")
             }
             srg.classes.each {
                 if (it.value.startsWith('net/minecraft') && csrg.classes.containsKey(it.key)) {
-                    writer.println("CL: ${csrg.classes.get(it.key)} ${it.value}")
+                    writeClass(writer, csrg.classes.get(it.key), it.value)
                 }
             }
             srg.fields.each {
                 def i = it.key.lastIndexOf('/')
-                def owner = it.key.substring(0, i)
-                if (csrg.classes.containsKey(owner)) {
+                def ownerCl = it.key.substring(0, i)
+                if (csrg.classes.containsKey(ownerCl)) {
                     def notch = it.key.substring(i + 1)
                     def srgField = it.value
-                    def csrgCl = csrg.classes.get(owner)
-                    def csrgField = csrg.fields.get("$csrgCl/$notch".toString())
-                    if (csrgField == null) csrgField = notch
-                    writer.println("FD: $csrgCl/$csrgField ${srg.classes.get(owner)}/$srgField")
+                    def csrgCl = csrg.classes.get(ownerCl)
+                    def csrgField = csrg.fields.get("$csrgCl/$notch".toString()) ?: notch
+                    writeField(writer, csrgCl, csrgField, "${srg.classes.get(ownerCl)}/$srgField")
                 }
             }
-            srg.methods.each {
+            srg.methods.each { Map.Entry<String, String> it ->
                 def spl = it.key.split(' ')
                 def srgMethod = it.value
                 def desc = spl[1]
                 def i = spl[0].lastIndexOf('/')
-                def owner = spl[0].substring(0, i)
+                def ownerCl = spl[0].substring(0, i)
                 def notch = spl[0].substring(i + 1)
-                if (csrg.classes.containsKey(owner)) {
-                    def csrgCl = notchToCsrgMapper.map(owner)
+                if (csrg.classes.containsKey(ownerCl)) {
+                    def csrgCl = notchToCsrgMapper.map(ownerCl)
                     def csrgDesc = notchToCsrgMapper.mapMethodDesc(desc)
                     def csrgMethod = ProcessMappingTask.findCsrg(prov, csrgCl, notch, csrgDesc, csrg.methods, false)
                     if (csrgMethod == null) {
-                        def extendSearch = !srgMethod.startsWith('func_')
-                        for (def alias : srgMethodAlias.get(extendSearch ? owner + '/' + srgMethod : srgMethod)) {
+                        def extendSearch = !(srgMethod.startsWith('func_') || srgMethod.startsWith('m_'))
+                        for (def alias : srgMethodAlias.get(extendSearch ? ownerCl + '/' + srgMethod : srgMethod)) {
                             if (alias != (notch + ' ' + desc)) {
                                 def aliasName = alias.split(' ')[0]
                                 def aliasDesc = alias.split(' ')[1]
@@ -262,9 +184,60 @@ class ProcessMappingTask extends DefaultTask {
                         }
                     }
                     if (csrgMethod == null) csrgMethod = notch
-                    writer.println("MD: $csrgCl/$csrgMethod ${packageMapper.mapMethodDesc(csrgDesc)} ${srg.classes.get(owner)}/$srgMethod ${notchToSrgMapper.mapMethodDesc(desc)}")
+                    this.writeMethod(writer, csrgCl, csrgMethod, packageMapper.mapMethodDesc(csrgDesc), "${srg.classes.get(ownerCl)}/$srgMethod ${notchToSrgMapper.mapMethodDesc(desc)}")
                 }
             }
+        }
+    }
+
+    @Lazy
+    private Remapper officialPackageMapper = {
+        def clFile = new File(buildData, "mappings/bukkit-$mcVersion-cl.csrg")
+        def csrg = new JarMapping()
+        csrg.loadMappings(clFile)
+        csrg.classes.put('net/minecraft/server/MinecraftServer', 'net/minecraft/server/MinecraftServer')
+        csrg.classes.put('net/minecraft/server/Main', 'net/minecraft/server/Main')
+        def classes = csrg.classes.values().collectEntries { [(it.substring(it.lastIndexOf('/') + 1)): it.substring(0, it.lastIndexOf('/'))] }
+        return new Remapper() {
+            @Override
+            String map(String internalName) {
+                if (internalName.startsWith('net/minecraft')) {
+                    def cl = internalName.substring(internalName.lastIndexOf('/') + 1)
+                    if (classes.containsKey(cl)) {
+                        return "${classes.get(cl)}/$cl"
+                    } else if (internalName.contains('$')) {
+                        def i = internalName.lastIndexOf('$')
+                        return map(internalName.substring(0, i)) + internalName.substring(i)
+                    } else {
+                        println("No mapping found for " + internalName)
+                    }
+                }
+                return internalName
+            }
+        }
+    }()
+
+    private void writeClass(PrintWriter writer, String csrg, String srg) {
+        if (packageName == 'spigot') {
+            writer.println("CL: $csrg $srg")
+        } else if (packageName == 'official') {
+            writer.println("CL: ${officialPackageMapper.map(csrg)} $srg")
+        }
+    }
+
+    private void writeField(PrintWriter writer, String csrgCl, String csrgField, String srgContent) {
+        if (packageName == 'spigot') {
+            writer.println("FD: $csrgCl/$csrgField $srgContent")
+        } else if (packageName == 'official') {
+            writer.println("FD: ${officialPackageMapper.map(csrgCl)}/$csrgField $srgContent")
+        }
+    }
+
+    private void writeMethod(PrintWriter writer, String csrgCl, String csrgMethod, String csrgDesc, String srgContent) {
+        if (packageName == 'spigot') {
+            writer.println("MD: $csrgCl/$csrgMethod $csrgDesc $srgContent")
+        } else if (packageName == 'official') {
+            writer.println("MD: ${officialPackageMapper.map(csrgCl)}/$csrgMethod ${officialPackageMapper.mapMethodDesc(csrgDesc)} $srgContent")
         }
     }
 
@@ -290,7 +263,7 @@ class ProcessMappingTask extends DefaultTask {
         ClassReader cr
         try {
             cr = new ClassReader(name)
-        } catch (Exception ex) {
+        } catch (Exception ignored) {
             return null
         }
         ClassNode node = new ClassNode()
@@ -320,24 +293,9 @@ class ProcessMappingTask extends DefaultTask {
         return ret
     }
 
-    private static String find(InheritanceMap im, String root, String method, String desc, Map<String, String> map) {
-        def queue = new ArrayDeque<String>()
-        queue.addFirst(root)
-        while (!queue.isEmpty()) {
-            def cl = queue.pollFirst()
-            im.getParents(cl).each { queue.addLast(it) }
-            def result = map.findAll { it.value == method }.findAll { it.key.startsWith(cl + '/') && it.key.endsWith(desc) }
-            if (!result.isEmpty()) {
-                return result.iterator().next().key.replace(cl + '/', '').replace(desc, '').trim()
-            }
-        }
-        if (method != '<init>') println("No mapping found for $root/$method $desc")
-        return method
-    }
-
     private static void innerClasses(JarMapping csrg, JarMapping srg) {
         srg.classes.keySet().stream().filter { !csrg.classes.containsKey(it) }
-                .filter { c -> csrg.classes.keySet().findResult { it.startsWith(c) } != null }
+                .filter { String c -> csrg.classes.keySet().findResult { it.startsWith(c) } != null }
                 .forEach {
                     name(it, '', csrg)
                 }
@@ -415,5 +373,14 @@ class ProcessMappingTask extends DefaultTask {
 
     void process(Closure<Void> closure) {
         processors.add(closure)
+    }
+
+    @Input
+    String getPackageName() {
+        return packageName
+    }
+
+    void setPackageName(String packageName) {
+        this.packageName = packageName
     }
 }

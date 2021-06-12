@@ -2,6 +2,7 @@ package io.izzel.arclight.gradle
 
 import groovy.json.JsonOutput
 import io.izzel.arclight.gradle.tasks.BuildSpigotTask
+import io.izzel.arclight.gradle.tasks.ProcessAccessTransformerTask
 import io.izzel.arclight.gradle.tasks.ProcessMappingTask
 import io.izzel.arclight.gradle.tasks.DownloadBuildToolsTask
 import io.izzel.arclight.gradle.tasks.RemapSpigotTask
@@ -11,7 +12,6 @@ import net.minecraftforge.gradle.userdev.tasks.RenameJarInPlace
 import org.gradle.api.InvalidUserDataException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
-import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.DependencyArtifact
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.StopExecutionException
@@ -45,6 +45,7 @@ class ArclightGradlePlugin implements Plugin<Project> {
         def processMapping = project.tasks.create('processMapping', ProcessMappingTask)
         def remapSpigot = project.tasks.create('remapSpigotJar', RemapSpigotTask)
         def generateMeta = project.tasks.create('generateArclightMeta', Copy)
+        def processAt = project.tasks.create('processAT', ProcessAccessTransformerTask)
         def downloadInstaller = project.tasks.create('downloadInstaller')
         generateMeta.dependsOn(downloadInstaller)
         def metaFolder = project.file("${project.buildDir}/arclight_cache/meta")
@@ -75,6 +76,14 @@ class ArclightGradlePlugin implements Plugin<Project> {
                 task.outDir = project.file("${project.buildDir}/arclight_cache/tmp_srg")
                 task.inSrg = extractSrg.output
                 task.inJar = new File(buildTools, "spigot-${arclightExt.mcVersion}.jar")
+                task.packageName = arclightExt.packageName
+                task.dependsOn(extractSrg, createSrgToMcp, buildSpigot)
+            }
+            processAt.configure { ProcessAccessTransformerTask task ->
+                task.buildData = new File(buildTools, 'BuildData')
+                task.mcVersion = arclightExt.mcVersion
+                task.outDir = project.file("${project.buildDir}/arclight_cache/tmp_srg")
+                task.inSrg = extractSrg.output
                 task.dependsOn(extractSrg, createSrgToMcp, buildSpigot)
             }
             remapSpigot.configure { RemapSpigotTask task ->

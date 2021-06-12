@@ -13,6 +13,7 @@ class ArclightExtension {
     private boolean reobfVersion = false
     private List<String> installerInfo = new ArrayList<>()
     private boolean sharedSpigot = true
+    private String packageName = "official"
 
     ArclightExtension(Project project) {
         this.project = project
@@ -80,5 +81,13 @@ class ArclightExtension {
 
     void setSharedSpigot(boolean sharedSpigot) {
         this.sharedSpigot = sharedSpigot
+    }
+
+    String getPackageName() {
+        return packageName
+    }
+
+    void setPackageName(String packageName) {
+        this.packageName = packageName
     }
 }
