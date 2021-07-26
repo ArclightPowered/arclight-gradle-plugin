@@ -5,9 +5,10 @@ import io.izzel.arclight.gradle.tasks.BuildSpigotTask
 import io.izzel.arclight.gradle.tasks.ProcessAccessTransformerTask
 import io.izzel.arclight.gradle.tasks.ProcessMappingTask
 import io.izzel.arclight.gradle.tasks.DownloadBuildToolsTask
+import io.izzel.arclight.gradle.tasks.ProcessMappingV2Task
 import io.izzel.arclight.gradle.tasks.RemapSpigotTask
-import net.minecraftforge.gradle.common.task.ExtractMCPData
-import net.minecraftforge.gradle.mcp.task.GenerateSRG
+import net.minecraftforge.gradle.common.tasks.ExtractMCPData
+import net.minecraftforge.gradle.mcp.tasks.GenerateSRG
 import net.minecraftforge.gradle.userdev.tasks.RenameJarInPlace
 import org.gradle.api.InvalidUserDataException
 import org.gradle.api.Plugin
@@ -32,7 +33,7 @@ class ArclightGradlePlugin implements Plugin<Project> {
         }
         def arclightExt = project.extensions.create('arclight', ArclightExtension, project)
         def conf = project.configurations.create('arclight')
-        project.configurations.compile.extendsFrom(conf)
+        project.configurations.implementation.extendsFrom(conf)
         def buildTools = project.file("${arclightExt.sharedSpigot ? project.rootProject.buildDir : project.buildDir}/arclight_cache/buildtools")
         def buildToolsFile = new File(buildTools, 'BuildTools.jar')
         def downloadSpigot = project.tasks.create('downloadBuildTools', DownloadBuildToolsTask, {
@@ -42,7 +43,7 @@ class ArclightGradlePlugin implements Plugin<Project> {
             if (buildToolsFile.exists()) throw new StopExecutionException()
         }
         def buildSpigot = project.tasks.create('buildSpigotTask', BuildSpigotTask, project)
-        def processMapping = project.tasks.create('processMapping', ProcessMappingTask)
+        def processMapping = project.tasks.create('processMapping', ProcessMappingV2Task)
         def remapSpigot = project.tasks.create('remapSpigotJar', RemapSpigotTask)
         def generateMeta = project.tasks.create('generateArclightMeta', Copy)
         def processAt = project.tasks.create('processAT', ProcessAccessTransformerTask)
@@ -69,13 +70,14 @@ class ArclightGradlePlugin implements Plugin<Project> {
             }
             def extractSrg = project.tasks.getByName('extractSrg') as ExtractMCPData
             def createSrgToMcp = project.tasks.getByName('createSrgToMcp') as GenerateSRG
-            processMapping.configure { ProcessMappingTask task ->
+            processMapping.configure { ProcessMappingV2Task task ->
                 task.buildData = new File(buildTools, 'BuildData')
                 task.mcVersion = arclightExt.mcVersion
                 task.bukkitVersion = arclightExt.bukkitVersion
                 task.outDir = project.file("${project.buildDir}/arclight_cache/tmp_srg")
-                task.inSrg = extractSrg.output
+                task.inSrg = extractSrg.output.get().asFile
                 task.inJar = new File(buildTools, "spigot-${arclightExt.mcVersion}.jar")
+                task.inVanillaJar = new File(task.buildData, "work/minecraft_server.${task.mcVersion}.jar")
                 task.packageName = arclightExt.packageName
                 task.dependsOn(extractSrg, createSrgToMcp, buildSpigot)
             }
@@ -83,14 +85,14 @@ class ArclightGradlePlugin implements Plugin<Project> {
                 task.buildData = new File(buildTools, 'BuildData')
                 task.mcVersion = arclightExt.mcVersion
                 task.outDir = project.file("${project.buildDir}/arclight_cache/tmp_srg")
-                task.inSrg = extractSrg.output
+                task.inSrg = extractSrg.output.get().asFile
                 task.dependsOn(extractSrg, createSrgToMcp, buildSpigot)
             }
             remapSpigot.configure { RemapSpigotTask task ->
                 task.ssJar = new File(buildTools, 'BuildData/bin/SpecialSource.jar')
                 task.inJar = new File(buildTools, "spigot-${arclightExt.mcVersion}.jar")
                 task.inSrg = new File(processMapping.outDir, 'bukkit_srg.srg')
-                task.inSrgToStable = createSrgToMcp.output
+                task.inSrgToStable = createSrgToMcp.output.get().asFile
                 task.inheritanceMap = new File(processMapping.outDir, 'inheritanceMap.txt')
                 task.outJar = project.file("${project.buildDir}/arclight_cache/spigot-${arclightExt.mcVersion}-mapped.jar")
                 task.outDeobf = project.file("${project.buildDir}/arclight_cache/spigot-${arclightExt.mcVersion}-mapped-deobf.jar")
@@ -161,7 +163,7 @@ class ArclightGradlePlugin implements Plugin<Project> {
                 }
             }
             if (remapSpigot.outDeobf.exists()) {
-                project.configurations.compile.dependencies.add(project.dependencies.create(project.files(remapSpigot.outDeobf)))
+                project.configurations.implementation.dependencies.add(project.dependencies.create(project.files(remapSpigot.outDeobf)))
             }
             if (arclightExt.reobfVersion) {
                 File map = project.file("${project.buildDir}/arclight_cache/tmp_srg/reobf_version_${arclightExt.bukkitVersion}.srg")
@@ -170,11 +172,9 @@ class ArclightGradlePlugin implements Plugin<Project> {
                     map.createNewFile()
                 }
                 map.text = "PK: org/bukkit/craftbukkit/v org/bukkit/craftbukkit/${arclightExt.bukkitVersion}"
-                project.tasks.withType(RenameJarInPlace).each { task ->
-                    task.doFirst {
-                        project.logger.info "Contributing tsrg mappings ({}) to {} in {}", map, task.name, task.project
-                        task.extraMapping(map)
-                    }
+                project.tasks.withType(RenameJarInPlace).each { RenameJarInPlace task ->
+                    project.logger.info "Contributing tsrg mappings ({}) to {} in {}", map, task.name, task.project
+                    task.extraMappings.from(map)
                 }
             }
         }
