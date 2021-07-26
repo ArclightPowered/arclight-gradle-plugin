@@ -29,8 +29,11 @@ dependencies {
     embed 'org.cadixdev:lorenz:0.5.7'
 }
 
+java.toolchain.languageVersion = JavaLanguageVersion.of(16)
+
 jar {
     from(configurations.embed.collect { it.isDirectory() ? it : zipTree(it) })
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 publishing {
