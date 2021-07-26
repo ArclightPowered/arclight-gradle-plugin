@@ -97,7 +97,7 @@ class ArclightGradlePlugin implements Plugin<Project> {
                 task.outJar = project.file("${project.buildDir}/arclight_cache/spigot-${arclightExt.mcVersion}-mapped.jar")
                 task.outDeobf = project.file("${project.buildDir}/arclight_cache/spigot-${arclightExt.mcVersion}-mapped-deobf.jar")
                 task.inAt = arclightExt.accessTransformer
-                task.dependsOn(processMapping, remapSpigot)
+                task.dependsOn(processMapping, buildSpigot)
                 if (arclightExt.wipeVersion && !task.bukkitVersion) {
                     task.bukkitVersion = arclightExt.bukkitVersion
                 }
