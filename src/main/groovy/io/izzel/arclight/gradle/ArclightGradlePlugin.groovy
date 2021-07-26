@@ -77,7 +77,7 @@ class ArclightGradlePlugin implements Plugin<Project> {
                 task.outDir = project.file("${project.buildDir}/arclight_cache/tmp_srg")
                 task.inSrg = extractSrg.output.get().asFile
                 task.inJar = new File(buildTools, "spigot-${arclightExt.mcVersion}.jar")
-                task.inVanillaJar = new File(task.buildData, "work/minecraft_server.${task.mcVersion}.jar")
+                task.inVanillaJar = new File(buildTools, "work/minecraft_server.${task.mcVersion}.jar")
                 task.packageName = arclightExt.packageName
                 task.dependsOn(extractSrg, createSrgToMcp, buildSpigot)
             }
@@ -97,7 +97,7 @@ class ArclightGradlePlugin implements Plugin<Project> {
                 task.outJar = project.file("${project.buildDir}/arclight_cache/spigot-${arclightExt.mcVersion}-mapped.jar")
                 task.outDeobf = project.file("${project.buildDir}/arclight_cache/spigot-${arclightExt.mcVersion}-mapped-deobf.jar")
                 task.inAt = arclightExt.accessTransformer
-                task.dependsOn(processMapping)
+                task.dependsOn(processMapping, remapSpigot)
                 if (arclightExt.wipeVersion && !task.bukkitVersion) {
                     task.bukkitVersion = arclightExt.bukkitVersion
                 }
