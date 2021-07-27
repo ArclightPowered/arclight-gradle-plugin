@@ -36,13 +36,36 @@ class ArclightGradlePlugin implements Plugin<Project> {
         project.configurations.implementation.extendsFrom(conf)
         def buildTools = project.file("${arclightExt.sharedSpigot ? project.rootProject.buildDir : project.buildDir}/arclight_cache/buildtools")
         def buildToolsFile = new File(buildTools, 'BuildTools.jar')
-        def downloadSpigot = project.tasks.create('downloadBuildTools', DownloadBuildToolsTask, {
-            it.output = buildToolsFile
-        })
-        downloadSpigot.doFirst {
-            if (buildToolsFile.exists()) throw new StopExecutionException()
+        def downloadSpigot
+        if (project.rootProject.tasks.findByPath('downloadBuildTools')) {
+            downloadSpigot = project.rootProject.tasks.getByName('downloadBuildTools')
+        } else {
+            downloadSpigot = project.rootProject.tasks.create('downloadBuildTools', DownloadBuildToolsTask, {
+                it.output = buildToolsFile
+            })
+            downloadSpigot.doFirst {
+                if (buildToolsFile.exists()) throw new StopExecutionException()
+            }
         }
-        def buildSpigot = project.tasks.create('buildSpigotTask', BuildSpigotTask, project)
+        def buildSpigot
+        if (project.rootProject.tasks.findByPath('buildSpigotTask')) {
+            buildSpigot = project.rootProject.tasks.getByName('buildSpigotTask')
+        } else {
+            buildSpigot = project.rootProject.tasks.create('buildSpigotTask', BuildSpigotTask, project)
+            project.afterEvaluate {
+                buildSpigot.doFirst {
+                    if (new File(buildTools, "spigot-${arclightExt.mcVersion}.jar").exists()) {
+                        throw new StopExecutionException()
+                    }
+                }
+                buildSpigot.configure { BuildSpigotTask task ->
+                    task.buildTools = buildToolsFile
+                    task.outputDir = buildTools
+                    task.mcVersion = arclightExt.mcVersion
+                    task.dependsOn(downloadSpigot)
+                }
+            }
+        }
         def processMapping = project.tasks.create('processMapping', ProcessMappingV2Task)
         def remapSpigot = project.tasks.create('remapSpigotJar', RemapSpigotTask)
         def generateMeta = project.tasks.create('generateArclightMeta', Copy)
@@ -57,17 +80,6 @@ class ArclightGradlePlugin implements Plugin<Project> {
             task.dependsOn(remapSpigot)
         }
         project.afterEvaluate {
-            buildSpigot.doFirst {
-                if (new File(buildTools, "spigot-${arclightExt.mcVersion}.jar").exists()) {
-                    throw new StopExecutionException()
-                }
-            }
-            buildSpigot.configure { BuildSpigotTask task ->
-                task.buildTools = buildToolsFile
-                task.outputDir = buildTools
-                task.mcVersion = arclightExt.mcVersion
-                task.dependsOn(downloadSpigot)
-            }
             def extractSrg = project.tasks.getByName('extractSrg') as ExtractMCPData
             def createSrgToMcp = project.tasks.getByName('createSrgToMcp') as GenerateSRG
             processMapping.configure { ProcessMappingV2Task task ->

@@ -20,6 +20,7 @@ class ProcessMappingV2Task extends DefaultTask {
     private static final def PKG = [
             'it', 'org/apache', 'jline', 'org/codehaus', 'org/eclipse'
     ]
+    private static final Map<String, String> KNOWN_WRONG_MAP = ['m_7870_': 'startDrownedConversion']
 
     private File buildData
     private File inSrg
@@ -63,8 +64,15 @@ class ProcessMappingV2Task extends DefaultTask {
         }
         def srgRev = srg.reverse()
         def finalMap = srgRev.merge(csrg).reverse()
+        Map<String, String> seenNames = [:]
         finalMap.topLevelClassMappings.each {
-            it.methodMappings.each { m ->
+            if (!it.fullObfuscatedName.contains('/')) {
+                return
+            }
+            it.methodMappings.each { MethodMapping m ->
+                if (!m.hasDeobfuscatedName()) {
+                    return
+                }
                 def s = m.deobfuscatedName
                 if (!s.startsWith('m_')) {
                     def c = srgRev.getTopLevelClassMapping(m.parent.deobfuscatedName).get()
@@ -79,10 +87,28 @@ class ProcessMappingV2Task extends DefaultTask {
                             println('No mapping found for ' + m)
                         }
                     }
+                } else {
+                    def old = seenNames[m.deobfuscatedName]
+                    if (old) {
+                        if ((old.length() > 2 || m.obfuscatedName.length() > 2) && old != m.obfuscatedName) {
+                            if (old.length() > 2 && m.obfuscatedName.length() > 2) {
+                                if (KNOWN_WRONG_MAP[m.deobfuscatedName] != m.obfuscatedName) {
+                                    println("Duplicate [$old, ${m.obfuscatedName}] -> ${m.deobfuscatedName} in ${m.parent.fullDeobfuscatedName}")
+                                }
+                            } else {
+                                seenNames[m.deobfuscatedName] = m.obfuscatedName.length() > old.length() ? m.obfuscatedName : old
+                            }
+                        }
+                    } else {
+                        seenNames[m.deobfuscatedName] = m.obfuscatedName
+                    }
                 }
             }
         }
         new File(outDir, 'bukkit_srg.srg').withWriter {
+            PKG.each { pkg ->
+                it.writeLine("PK: org/bukkit/craftbukkit/libs/$pkg $pkg")
+            }
             new TSrgWriter(it) {
                 def remapper = new Remapper() {
                     @Override
@@ -106,7 +132,8 @@ class ProcessMappingV2Task extends DefaultTask {
                 @Override
                 protected void writeMethodMapping(MethodMapping mapping) {
                     this.writer.println(String.format("\t%s %s %s",
-                            mapping.getObfuscatedName(), remapper.mapMethodDesc(mapping.getObfuscatedDescriptor()),
+                            seenNames.getOrDefault(mapping.getDeobfuscatedName(), mapping.getObfuscatedName()),
+                            remapper.mapMethodDesc(mapping.getObfuscatedDescriptor()),
                             mapping.getDeobfuscatedName()))
                 }
             }.write(finalMap)
