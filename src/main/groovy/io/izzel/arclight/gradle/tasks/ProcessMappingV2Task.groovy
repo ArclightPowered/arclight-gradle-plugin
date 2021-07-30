@@ -2,6 +2,8 @@ package io.izzel.arclight.gradle.tasks
 
 import org.cadixdev.bombe.analysis.CachingInheritanceProvider
 import org.cadixdev.bombe.analysis.ReflectionInheritanceProvider
+import org.cadixdev.bombe.type.MethodDescriptor
+import org.cadixdev.bombe.type.ObjectType
 import org.cadixdev.lorenz.MappingSet
 import org.cadixdev.lorenz.io.srg.csrg.CSrgReader
 import org.cadixdev.lorenz.io.srg.tsrg.TSrgReader
@@ -24,6 +26,7 @@ class ProcessMappingV2Task extends DefaultTask {
 
     private File buildData
     private File inSrg
+    private File inMcp
     private File inJar
     private File inVanillaJar
     private String mcVersion
@@ -47,6 +50,12 @@ class ProcessMappingV2Task extends DefaultTask {
             def data = it.lines().filter { String s -> !(s.startsWith('\t\t') || s.startsWith('tsrg2')) }.collect(Collectors.joining('\n'))
             new TSrgReader(new StringReader(data.toString())).read(srg)
         }
+        def mcp = MappingSet.create()
+        inMcp.withReader {
+            def data = it.lines().filter { String s -> !(s.startsWith('\t\t') || s.startsWith('tsrg2')) }.collect(Collectors.joining('\n'))
+            new TSrgReader(new StringReader(data.toString())).read(mcp)
+        }
+        mcp = mcp.reverse()
         def provider = new CachingInheritanceProvider(new ReflectionInheritanceProvider(new URLClassLoader(inVanillaJar.toURI().toURL())))
         innerClasses(csrg, srg)
         csrg.topLevelClassMappings.each {
@@ -138,6 +147,45 @@ class ProcessMappingV2Task extends DefaultTask {
                 }
             }.write(finalMap)
         }
+        new File(outDir, 'bukkit_at.at').withWriter { w ->
+            new File(buildData, "mappings/bukkit-${mcVersion}.at").eachLine { l ->
+                if (l.trim().isEmpty() || l.startsWith('#')) {
+                    w.writeLine(l)
+                    return
+                }
+                println(l)
+                def split = l.split(' ', 2)
+                def i = split[1].indexOf('(')
+                if (i == -1) {
+                    def name = split[1].substring(split[1].lastIndexOf('/') + 1)
+                    if (name.charAt(0).isUpperCase()) {
+                        w.writeLine("${split[0].replace('inal', '')} ${(finalMap.deobfuscate(new ObjectType(split[1])) as ObjectType).className.replace('/', '.')}")
+                    } else {
+                        def cl = split[1].substring(0, split[1].lastIndexOf('/'))
+                        def f = finalMap.getTopLevelClassMapping(cl)
+                                .flatMap { mcp.getTopLevelClassMapping(it.fullDeobfuscatedName) }
+                                .flatMap { it.getFieldMapping(name) }
+                                .map { it.deobfuscatedName }
+                        if (f.isEmpty()) {
+                            w.writeLine("# TODO ${split[0].replace('inal', '')} ${(finalMap.deobfuscate(new ObjectType(cl)) as ObjectType).className.replace('/', '.')} $name")
+                        } else {
+                            w.writeLine("${split[0].replace('inal', '')} ${(finalMap.deobfuscate(new ObjectType(cl)) as ObjectType).className.replace('/', '.')} ${f.get()}")
+                        }
+                    }
+                } else {
+                    def desc = split[1].substring(i)
+                    def s = split[1].substring(0, i)
+                    def cl = s.substring(0, s.lastIndexOf('/'))
+                    def name = s.substring(s.lastIndexOf('/') + 1)
+                    def m = finalMap.getTopLevelClassMapping(cl).flatMap { it.getMethodMapping(name, desc) }
+                    if (m.isEmpty()) {
+                        w.writeLine("${name == '<init>' ? '' : '# TODO '}${split[0].replace('inal', '')} ${(finalMap.deobfuscate(new ObjectType(cl)) as ObjectType).className.replace('/', '.')} $name${finalMap.deobfuscate(MethodDescriptor.of(desc))}")
+                    } else {
+                        w.writeLine("${split[0].replace('inal', '')} ${(finalMap.deobfuscate(new ObjectType(cl)) as ObjectType).className.replace('/', '.')} ${m.get().deobfuscatedName}${m.get().deobfuscatedDescriptor}")
+                    }
+                }
+            }
+        }
     }
 
     private static void innerClasses(MappingSet csrg, MappingSet srg) {
@@ -176,6 +224,15 @@ class ProcessMappingV2Task extends DefaultTask {
 
     void setInSrg(File inSrg) {
         this.inSrg = inSrg
+    }
+
+    @InputFile
+    File getInMcp() {
+        return inMcp
+    }
+
+    void setInMcp(File inMcp) {
+        this.inMcp = inMcp
     }
 
     @InputFile
