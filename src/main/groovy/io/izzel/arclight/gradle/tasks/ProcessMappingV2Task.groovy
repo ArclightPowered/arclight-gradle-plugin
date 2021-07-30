@@ -5,6 +5,7 @@ import org.cadixdev.bombe.analysis.ReflectionInheritanceProvider
 import org.cadixdev.bombe.type.MethodDescriptor
 import org.cadixdev.bombe.type.ObjectType
 import org.cadixdev.lorenz.MappingSet
+import org.cadixdev.lorenz.io.srg.SrgReader
 import org.cadixdev.lorenz.io.srg.csrg.CSrgReader
 import org.cadixdev.lorenz.io.srg.tsrg.TSrgReader
 import org.cadixdev.lorenz.io.srg.tsrg.TSrgWriter
@@ -52,8 +53,7 @@ class ProcessMappingV2Task extends DefaultTask {
         }
         def mcp = MappingSet.create()
         inMcp.withReader {
-            def data = it.lines().filter { String s -> !(s.startsWith('\t\t') || s.startsWith('tsrg2')) }.collect(Collectors.joining('\n'))
-            new TSrgReader(new StringReader(data.toString())).read(mcp)
+            new SrgReader(it).read(mcp)
         }
         mcp = mcp.reverse()
         def provider = new CachingInheritanceProvider(new ReflectionInheritanceProvider(new URLClassLoader(inVanillaJar.toURI().toURL())))
@@ -153,12 +153,11 @@ class ProcessMappingV2Task extends DefaultTask {
                     w.writeLine(l)
                     return
                 }
-                println(l)
                 def split = l.split(' ', 2)
                 def i = split[1].indexOf('(')
                 if (i == -1) {
                     def name = split[1].substring(split[1].lastIndexOf('/') + 1)
-                    if (name.charAt(0).isUpperCase()) {
+                    if (name.charAt(0).isUpperCase() && name.charAt(1).isLowerCase()) {
                         w.writeLine("${split[0].replace('inal', '')} ${(finalMap.deobfuscate(new ObjectType(split[1])) as ObjectType).className.replace('/', '.')}")
                     } else {
                         def cl = split[1].substring(0, split[1].lastIndexOf('/'))
