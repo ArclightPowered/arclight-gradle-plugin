@@ -32,8 +32,6 @@ class RemapSpigotTask extends DefaultTask {
         includes = new ArrayList<>()
         includes.add('configurations')
         includes.add('META-INF/maven/org.spigotmc')
-        includes.add('META-INF/services')
-        includes.add('mojang-translations')
         includes.add('org/spigotmc')
         includes.add('org/bukkit/craftbukkit')
         includes.add('version.json')

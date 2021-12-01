@@ -69,7 +69,7 @@ class ArclightGradlePlugin implements Plugin<Project> {
         def processMapping = project.tasks.create('processMapping', ProcessMappingV2Task)
         def remapSpigot = project.tasks.create('remapSpigotJar', RemapSpigotTask)
         def generateMeta = project.tasks.create('generateArclightMeta', Copy)
-        def processAt = project.tasks.create('processAT', ProcessAccessTransformerTask)
+        //def processAt = project.tasks.create('processAT', ProcessAccessTransformerTask)
         def downloadInstaller = project.tasks.create('downloadInstaller')
         generateMeta.dependsOn(downloadInstaller)
         def metaFolder = project.file("${project.buildDir}/arclight_cache/meta")
@@ -94,13 +94,13 @@ class ArclightGradlePlugin implements Plugin<Project> {
                 task.packageName = arclightExt.packageName
                 task.dependsOn(extractSrg, createSrgToMcp, buildSpigot)
             }
-            processAt.configure { ProcessAccessTransformerTask task ->
-                task.buildData = new File(buildTools, 'BuildData')
-                task.mcVersion = arclightExt.mcVersion
-                task.outDir = project.file("${project.buildDir}/arclight_cache/tmp_srg")
-                task.inSrg = extractSrg.output.get().asFile
-                task.dependsOn(extractSrg, createSrgToMcp, buildSpigot)
-            }
+            //processAt.configure { ProcessAccessTransformerTask task ->
+            //    task.buildData = new File(buildTools, 'BuildData')
+            //    task.mcVersion = arclightExt.mcVersion
+            //    task.outDir = project.file("${project.buildDir}/arclight_cache/tmp_srg")
+            //    task.inSrg = extractSrg.output.get().asFile
+            //    task.dependsOn(extractSrg, createSrgToMcp, buildSpigot)
+            //}
             remapSpigot.configure { RemapSpigotTask task ->
                 task.ssJar = new File(buildTools, 'BuildData/bin/SpecialSource.jar')
                 task.inJar = new File(buildTools, "spigot-${arclightExt.mcVersion}.jar")

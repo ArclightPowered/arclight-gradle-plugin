@@ -9,6 +9,7 @@ import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
 
 import javax.inject.Inject
+import java.util.jar.JarFile
 
 class BuildSpigotTask extends DefaultTask {
 
@@ -72,6 +73,17 @@ class BuildSpigotTask extends DefaultTask {
                     'java', '-jar', buildTools.canonicalPath, '--rev', mcVersion
             ]
             standardOutput = System.out
+        }
+        def bundler = new File(outSpigot.parentFile, 'bundler-' + outSpigot.name)
+        outSpigot.renameTo(bundler)
+        new JarFile(bundler).with {
+            it.stream().filter(ent -> ent.name.startsWith('META-INF/versions/') && ent.name.endsWith('.jar'))
+                    .limit(1)
+                    .forEach { ent ->
+                        outSpigot.withOutputStream { out ->
+                            it.getInputStream(ent).transferTo(out)
+                        }
+                    }
         }
     }
 }
