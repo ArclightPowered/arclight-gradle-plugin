@@ -1,5 +1,8 @@
 package io.izzel.arclight.gradle.tasks
 
+import net.md_5.specialsource.InheritanceMap
+import net.md_5.specialsource.Jar
+import net.md_5.specialsource.provider.JarProvider
 import org.cadixdev.bombe.analysis.CachingInheritanceProvider
 import org.cadixdev.bombe.analysis.ReflectionInheritanceProvider
 import org.cadixdev.bombe.type.MethodDescriptor
@@ -56,17 +59,44 @@ class ProcessMappingV2Task extends DefaultTask {
         if (!outDir.isDirectory()) {
             outDir.mkdirs()
         }
+        def srgRev = srg.reverse()
+        def finalMap = srgRev.merge(csrg).reverse()
         new File(outDir, 'inheritanceMap.txt').with {
             it.delete()
             it.createNewFile()
+            def im = new InheritanceMap()
+            def classes = []
+            csrg.topLevelClassMappings.each {
+                classes.add(it.fullDeobfuscatedName)
+                it.innerClassMappings.each {
+                    classes.add(it.fullDeobfuscatedName)
+                }
+            }
+            im.generate(new JarProvider(Jar.init(inJar)), classes)
+            it.withPrintWriter {
+                for (def className : classes) {
+                    def parents = im.getParents(className).collect { finalMap.getOrCreateClassMapping(it).fullDeobfuscatedName }
+                    if (!parents.isEmpty()) {
+                        it.print(finalMap.getOrCreateClassMapping(className).fullDeobfuscatedName)
+                        it.print(' ')
+                        it.println(parents.join(' '))
+                    }
+                }
+            }
         }
-        def srgRev = srg.reverse()
-        def finalMap = srgRev.merge(csrg).reverse()
         new File(outDir, 'bukkit_srg.srg').withWriter {
             new TSrgWriter(it) {
                 @Override
+                void write(final MappingSet mappings) {
+                    mappings.getTopLevelClassMappings().stream()
+                            .sorted(this.getConfig().getClassMappingComparator())
+                            .forEach(this::writeClassMapping)
+                }
+                @Override
                 protected void writeClassMapping(ClassMapping<?, ?> mapping) {
-                    if (mapping.fullObfuscatedName.contains('/')) {
+                    if (!mapping.hasMappings()) {
+                        this.writer.println(String.format("%s %s", mapping.getFullObfuscatedName(), mapping.getFullDeobfuscatedName()));
+                    } else if (mapping.fullObfuscatedName.contains('/')) {
                         super.writeClassMapping(mapping)
                     }
                 }
