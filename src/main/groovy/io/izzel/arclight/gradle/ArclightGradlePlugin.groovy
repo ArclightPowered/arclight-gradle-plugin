@@ -7,6 +7,7 @@ import io.izzel.arclight.gradle.tasks.ProcessMappingTask
 import io.izzel.arclight.gradle.tasks.DownloadBuildToolsTask
 import io.izzel.arclight.gradle.tasks.ProcessMappingV2Task
 import io.izzel.arclight.gradle.tasks.RemapSpigotTask
+import net.minecraftforge.gradle.common.tasks.DownloadMCMeta
 import net.minecraftforge.gradle.common.tasks.ExtractMCPData
 import net.minecraftforge.gradle.mcp.tasks.GenerateSRG
 import net.minecraftforge.gradle.userdev.tasks.RenameJarInPlace
@@ -80,6 +81,7 @@ class ArclightGradlePlugin implements Plugin<Project> {
             task.dependsOn(remapSpigot)
         }
         project.afterEvaluate {
+            def downloadMcMeta = project.tasks.getByName('downloadMCMeta') as DownloadMCMeta
             def extractSrg = project.tasks.getByName('extractSrg') as ExtractMCPData
             def createSrgToMcp = project.tasks.getByName('createSrgToMcp') as GenerateSRG
             processMapping.configure { ProcessMappingV2Task task ->
@@ -87,12 +89,13 @@ class ArclightGradlePlugin implements Plugin<Project> {
                 task.mcVersion = arclightExt.mcVersion
                 task.bukkitVersion = arclightExt.bukkitVersion
                 task.outDir = project.file("${project.buildDir}/arclight_cache/tmp_srg")
+                task.inMeta = downloadMcMeta.output.get().asFile
                 task.inSrg = extractSrg.output.get().asFile
                 task.inMcp = createSrgToMcp.output.get().asFile
                 task.inJar = new File(buildTools, "spigot-${arclightExt.mcVersion}.jar")
                 task.inVanillaJar = new File(buildTools, "work/minecraft_server.${task.mcVersion}.jar")
                 task.packageName = arclightExt.packageName
-                task.dependsOn(extractSrg, createSrgToMcp, buildSpigot)
+                task.dependsOn(downloadMcMeta, extractSrg, createSrgToMcp, buildSpigot)
             }
             //processAt.configure { ProcessAccessTransformerTask task ->
             //    task.buildData = new File(buildTools, 'BuildData')

@@ -1,6 +1,7 @@
 package io.izzel.arclight.gradle.tasks
 
 import io.izzel.arclight.gradle.Utils
+import net.md_5.specialsource.SpecialSource
 import org.gradle.api.DefaultTask
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
@@ -46,19 +47,13 @@ class RemapSpigotTask extends DefaultTask {
     @TaskAction
     void remap() {
         def tmp = Files.createTempFile("arclight", "jar")
-        project.exec {
-            commandLine = [
-                    'java', '-jar', ssJar.canonicalPath,
-                    '-i', inJar.canonicalPath,
-                    '-o', tmp.toFile().canonicalPath,
-                    '-m', inSrg.canonicalPath,
-                    '-h', inheritanceMap.canonicalPath
-            ]
-            standardOutput = System.out
-        }
+        SpecialSource.main(new String[]{
+                '-i', inJar.canonicalPath,
+                '-o', tmp.toFile().canonicalPath,
+                '-m', inSrg.canonicalPath,
+                '-h', inheritanceMap.canonicalPath})
         def tmpDeobf = Files.createTempFile("arclight", "jar")
         def args = [
-                'java', '-jar', ssJar.canonicalPath,
                 '-i', tmp.toFile().canonicalPath,
                 '-o', tmpDeobf.toFile().canonicalPath,
                 '-m', inSrgToStable.canonicalPath,
@@ -75,10 +70,7 @@ class RemapSpigotTask extends DefaultTask {
             args.add('--access-transformer')
             args.add(inAt.canonicalPath)
         }
-        project.exec {
-            commandLine = args
-            standardOutput = System.out
-        }
+        SpecialSource.main(args.toArray(new String[0]))
         copy(tmp, outJar.toPath(), includes, excludes)
         copy(tmpDeobf, outDeobf.toPath(), includes, excludes)
         Files.delete(tmp)

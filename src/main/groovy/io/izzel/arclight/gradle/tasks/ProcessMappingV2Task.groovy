@@ -1,5 +1,6 @@
 package io.izzel.arclight.gradle.tasks
 
+import groovy.json.JsonSlurper
 import net.md_5.specialsource.InheritanceMap
 import net.md_5.specialsource.Jar
 import net.md_5.specialsource.provider.JarProvider
@@ -8,20 +9,24 @@ import org.cadixdev.bombe.analysis.ReflectionInheritanceProvider
 import org.cadixdev.bombe.type.MethodDescriptor
 import org.cadixdev.bombe.type.ObjectType
 import org.cadixdev.lorenz.MappingSet
+import org.cadixdev.lorenz.io.proguard.ProGuardReader
 import org.cadixdev.lorenz.io.srg.SrgReader
 import org.cadixdev.lorenz.io.srg.csrg.CSrgReader
 import org.cadixdev.lorenz.io.srg.tsrg.TSrgReader
 import org.cadixdev.lorenz.io.srg.tsrg.TSrgWriter
 import org.cadixdev.lorenz.model.ClassMapping
+import org.cadixdev.lorenz.model.FieldMapping
 import org.cadixdev.lorenz.model.TopLevelClassMapping
 import org.gradle.api.DefaultTask
 import org.gradle.api.tasks.*
+import org.objectweb.asm.Type
 
 import java.util.stream.Collectors
 
 class ProcessMappingV2Task extends DefaultTask {
 
     private File buildData
+    private File inMeta
     private File inSrg
     private File inMcp
     private File inJar
@@ -38,6 +43,12 @@ class ProcessMappingV2Task extends DefaultTask {
         clFile.withReader {
             new CSrgReader(it).read(csrg)
         }
+        def official = MappingSet.create()
+        String url = new JsonSlurper().parse(inMeta).downloads.client_mappings.url
+        new URL(url).withReader {
+            new ProGuardReader(it).read(official)
+        }
+        official = official.reverse()
         def srg = MappingSet.create()
         inSrg.withReader {
             def data = it.lines().filter { String s -> !(s.startsWith('\t\t') || s.startsWith('tsrg2')) }.collect(Collectors.joining('\n'))
@@ -92,6 +103,7 @@ class ProcessMappingV2Task extends DefaultTask {
                             .sorted(this.getConfig().getClassMappingComparator())
                             .forEach(this::writeClassMapping)
                 }
+
                 @Override
                 protected void writeClassMapping(ClassMapping<?, ?> mapping) {
                     if (!mapping.hasMappings()) {
@@ -99,6 +111,16 @@ class ProcessMappingV2Task extends DefaultTask {
                     } else if (mapping.fullObfuscatedName.contains('/')) {
                         super.writeClassMapping(mapping)
                     }
+                }
+
+                @Override
+                protected void writeFieldMapping(FieldMapping mapping) {
+                    def cl = srgRev.getClassMapping(mapping.parent.fullDeobfuscatedName).get()
+                    def field = cl.getFieldMapping(mapping.deobfuscatedName).get().deobfuscatedName
+                    def nmsCl = official.getClassMapping(cl.fullDeobfuscatedName)
+                            .get().getFieldMapping(field).get().signature.type.get()
+                    def sig = Type.getType(csrg.deobfuscate(nmsCl).toString()).getClassName()
+                    this.writer.println(String.format("    %s %s -> %s", sig, mapping.getDeobfuscatedName(), mapping.getObfuscatedName()))
                 }
             }.write(finalMap)
         }
@@ -171,6 +193,15 @@ class ProcessMappingV2Task extends DefaultTask {
 
     void setBuildData(File buildData) {
         this.buildData = buildData
+    }
+
+    @InputFile
+    File getInMeta() {
+        return inMeta
+    }
+
+    void setInMeta(File inMeta) {
+        this.inMeta = inMeta
     }
 
     @InputFile

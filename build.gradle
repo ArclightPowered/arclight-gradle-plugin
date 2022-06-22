@@ -4,7 +4,7 @@ plugins {
 }
 
 group 'io.izzel.arclight'
-version '1.22'
+version '1.23'
 
 repositories {
     mavenCentral()
@@ -23,7 +23,7 @@ dependencies {
     implementation gradleApi()
     implementation localGroovy()
     implementation group: 'net.minecraftforge.gradle', name: 'ForgeGradle', version: '5.1.+', changing: true
-    embed group: 'net.md-5', name: 'SpecialSource', version: '1.10.0'
+    embed group: 'net.md-5', name: 'SpecialSource', version: '1.11.0'
     implementation "org.cadixdev:mercury:0.1.0"
     embed 'org.cadixdev:lorenz-io-proguard:0.5.8'
     embed 'org.cadixdev:lorenz:0.5.8'
